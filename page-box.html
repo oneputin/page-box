@@ -1,0 +1,211 @@
+<!-- <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-ajax/iron-ajax.html">
+ -->
+<link rel="import" href="bower_components/polymer/polymer.html">
+<link rel="import" href="bower_components/iron-ajax/iron-ajax.html">
+
+<!--
+`page-box`
+Container for exchangeable content routable as page in a SPA . 
+One (or many) webcomponent(s) can be loaded/exchanged on runtime via htmlImport 
+and become addressable and routable as applicatioon pages (as of app-route(0.9.2)) 
+limitation: data-binding to the wrapped content is unidirectional (box->content) 
+@demo demo/index.html 
+-->
+
+<dom-module id="page-box">
+
+  <template>
+
+    <style>
+
+      :host {
+        display: block;
+        --app-primary-color: #4285f4;
+        --app-secondary-color: black;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+    </style>
+
+    <iron-ajax auto 
+      url="[[_boxpageurl]]" 
+      handle-as="document" 
+      last-error="{{_boxpageerror}}"
+      last-response="{{_boxpagedom}}">
+    </iron-ajax>
+
+    <div id="box">
+      
+
+    </div>
+
+  </template>
+
+  <script>
+
+    Polymer({
+
+      is: 'page-box',
+
+      properties: {
+
+        // name-attribute of the page-box (used for SPA-navigation)
+        name: {
+          type:  String,
+          value: "pagebox",
+          reflectToAttribute: true
+        },
+
+        /* An object that setups the wrapped webcomponent-instance, containing 
+        * - url of the web-component
+        * - an object with properties to pass to the wrapped component   
+        * - an object with attributes to pass to the wrapped component  
+        * - open-flag, to trigger open after update 
+        * adding : (nav)log after successfull update  
+        */
+        pagemeta: {
+          type: Object,
+          value: function() {
+            return {
+              url:   "", 
+              props: {},
+              atts:  {},
+              open: 0
+            }
+          },
+          notify: true
+        },  
+        
+        // error-msg  
+        error: {
+          type: String,
+          notify: true
+        },
+
+        // "resolved" url to webcomponent 
+        _boxpageurl: {
+          type: String
+        },
+        // dom of webcomponent (to determine it's name)
+        _boxpagedom: {
+          type: String
+        },
+        // ajax-error 
+        _boxpageerror:{
+          type: Object
+        }
+
+      },
+
+      observers: [
+        '_pageboxTestUrl(pagemeta.url)',
+        '_pageboxUpdate(pagemeta, _boxpagedom)',
+        '_pageboxError(_boxpageerror.status, pagemeta.url)'
+      ],
+
+      // give an error-msg if requested page is not available 
+      _pageboxError: function(status, url) {
+        if (!status) return;
+        var msg = "boxpage failed with status "+status +" for url: " + url;
+        // console.log("boxpage-request-error:", msg);
+        this.error = msg;
+      },
+
+      // Check if requested box-content is available  
+      _pageboxTestUrl: function(url){ // console.log("_pageboxTestUrl", url);
+          if (!url) return ; 
+          this._boxpageurl = url; 
+      },
+      
+      /* Fill & Update the 'page-box'
+        - create an instance of imported web-component(s) 
+        - update with properties and attributes
+      */ 
+      _pageboxUpdate: function(pagemeta, pagedom) { // 
+          // Add another pagebox as child of #pages-collection
+          var log   = {name: this.name};
+          
+          if (!pagedom) { 
+            log.break = "page not available";
+            this.set('boxpage.log', log);
+            return ;
+          }
+
+          var oldies = this.$.box.querySelectorAll("*");    
+          for (var i = 0; i < oldies.length; i++) {
+              Polymer.dom(oldies[i]).parentNode.removeChild(oldies[i]);
+          }
+
+          var elemname = pagedom.querySelector("dom-module").id; 
+          var boxname  = this.name;    // console.log("creating " + elemname+ " in", boxname);
+          // prepare new pagebox-content
+          var pageurl   = pagemeta.url,
+              pageatts  = pagemeta.atts,
+              pageprops = pagemeta.props,
+              pagecontent = pagemeta.content;  // fill content-tags 
+          if (!pageatts)  pageatts  = {};
+          if (!pageprops) pageprops = {};
+
+          // Add Default(organisational) pagebox atts 
+          pageatts["id"]   = this.name;  // ??? required ???
+          pageatts["name"] = this.name;
+          
+          this.importHref(
+
+              pageurl, 
+
+              function (x) {  // console.log("template(ed):", pagesrc);
+
+                  boxpage = document.createElement(elemname);
+                  pagedom = boxpage.root;
+                  Polymer.dom(this.$.box).appendChild(boxpage);
+                  
+                  for (var attname in pageatts) {
+                    boxpage.setAttribute(attname, pageatts[attname]); 
+                  }//  
+
+                  for (var propkey in pageprops) {
+                    boxpage[propkey] = pageprops[propkey]; 
+                  }//;                            
+                  
+                  var c, cc = pagedom.querySelectorAll("content"); 
+                  if (pagecontent && cc.length) {         // console.log(typeof pagecontent, pagecontent);
+                    
+                    if (typeof pagecontent == "string") { // one "content" for all elements
+                    
+                      for (var i = 0; i < cc.length; i++) {
+                          cc[i].innerHTML = pagecontent
+                      }
+                    
+                    } else {
+                    
+                      Object.keys(pagecontent).forEach(function(key) {
+                        c = pagedom.querySelector("content"+key); // console.log(key,c)
+                        if (c) c.innerHTML = pagecontent[key];  
+                      });  
+                    }
+                  }
+                  
+                  // B. return a log-object as LOG
+                  // add 
+                  if (pagemeta.open) log.open = true; // console.log("log: ", log);
+                  this.set('pagemeta.log', log);       // OK., "set" immediately creates event, 
+              },
+
+              function(error) {
+                  console.log("pagebox-error",error);
+              },
+              true // async mode
+          ); 
+      }
+
+    });
+
+  </script>
+
+</dom-module>
+
